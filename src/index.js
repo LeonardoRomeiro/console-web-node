@@ -1,19 +1,27 @@
 import moment from 'moment'
 
-export default () => {
+const LINES = 10000
+const LINE_SIZE = 200
+const COLLECTION_NAME = 'logs'
+
+export default async function ConsoleWebNode(db, logsCollectionName = COLLECTION_NAME, lines = LINES) {
+  const CollectionLogs = db.collection(logsCollectionName)
+  await db.createCollection(logsCollectionName, { capped: true, size: lines * LINE_SIZE, max: lines }).catch(() => { })
+
+
   const StdoutWrite = process.stdout.write.bind(process.stdout)
   process.stdout.write = function($str) {
     const str = _formatLogString($str)
     StdoutWrite(str)
+    CollectionLogs.insertOne({ line: str })
   }
   
   const StderrWrite = process.stderr.write.bind(process.stderr)
   process.stderr.write = function($str) {
     const str = _formatLogErrString($str)
     StderrWrite(str)
+    CollectionLogs.insertOne({ line: str })
   }
-  
-  console.log('Logs loaded ✓')
 }
 
 function _formatLogString($str) {
