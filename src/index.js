@@ -5,7 +5,7 @@ const LINES = 10000
 const LINE_SIZE = 200
 const COLLECTION_NAME = 'logs'
 
-export default async function ConsoleWebNode(moment, db, logsCollectionName = COLLECTION_NAME, lines = LINES) {
+export default async function ConsoleWebNode(moment, db, timestamp = true, logsCollectionName = COLLECTION_NAME, lines = LINES) {
   let persistMethodFn
   let logsFn
 
@@ -23,15 +23,29 @@ export default async function ConsoleWebNode(moment, db, logsCollectionName = CO
   ConsoleWebNode.logs = logsFn
 
   const StdoutWrite = global.process.stdout.write.bind(global.process.stdout)
-  global.process.stdout.write = function($str) {
-    StdoutWrite($str)
-    persistMethodFn(_formatLogString(moment, $str))
-  }
-  
   const StderrWrite = global.process.stderr.write.bind(global.process.stderr)
-  global.process.stderr.write = function($str) {
-    StderrWrite($str)
-    persistMethodFn(_formatLogErrString(moment, $str))
+  if (timestamp) {
+    global.process.stdout.write = function($str) {
+      $str = _formatLogString(moment, $str)
+      StdoutWrite($str)
+      persistMethodFn($str)
+    }
+    
+    global.process.stderr.write = function($str) {
+      $str = _formatLogErrString(moment, $str)
+      StderrWrite($str)
+      persistMethodFn($str)
+    }
+  } else {
+    global.process.stdout.write = function($str) {
+      StdoutWrite($str)
+      persistMethodFn(_formatLogString(moment, $str))
+    }
+    
+    global.process.stderr.write = function($str) {
+      StderrWrite($str)
+      persistMethodFn(_formatLogErrString(moment, $str))
+    }
   }
 }
 
