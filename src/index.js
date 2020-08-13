@@ -7,15 +7,20 @@ const COLLECTION_NAME = 'logs'
 
 export default async function ConsoleWebNode(db, logsCollectionName = COLLECTION_NAME, lines = LINES) {
   let persistMethodFn
+  let logsFn
+
   if (db) {
     const collectionLogs = db.collection(logsCollectionName)
     await db.createCollection(logsCollectionName, { capped: true, size: lines * LINE_SIZE, max: lines }).catch(() => { })
     persistMethodFn = _persistMongodb.bind(null, collectionLogs)
+    logsFn = _logsFromMongodb
   } else {
     const circularBuffer = CircularBuffer(lines)
     persistMethodFn = _persistMemory.bind(null, circularBuffer)
+    logsFn = _logsFromMemory
   }
-    
+  
+  ConsoleWebNode.logs = logsFn
 
   const StdoutWrite = process.stdout.write.bind(process.stdout)
   process.stdout.write = function($str) {
@@ -48,4 +53,12 @@ function _persistMemory(circularBuffer, $str) {
 
 function _persistMongodb(collectionLogs, $str) {
   collectionLogs.insertOne({ line: $str })
+}
+
+async function _logsFromMemory() {
+  return 'text'
+}
+
+async function _logsFromMongodb() {
+  return 'text'
 }
