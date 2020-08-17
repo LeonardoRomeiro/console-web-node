@@ -1,36 +1,46 @@
 import { CircularBuffer } from './utils/circular-buffer.js'
 import { consoleToHtml, consoleToHtmlLine } from './utils/console-to-html.js'
 
-const LINES = 10000
 const LINE_SIZE = 200
-const COLLECTION_NAME = 'logs'
 
-export default async function ConsoleWebNode(moment, db, timestamp = true, logsCollectionName = COLLECTION_NAME, lines = LINES) {
+export default async function ConsoleWebNode({
+  express = null,
+  moment = null,
+  db = null,
+  consoleTimestamp = true,
+  logsCollectionName = 'logs',
+  logsPath = '/api/x/logs',
+  maxLines = 10000
+}) {
+
   let persistMethodFn
   let logsFn
 
   if (db) {
     const collectionLogs = db.collection(logsCollectionName)
-    await db.createCollection(logsCollectionName, { capped: true, size: lines * LINE_SIZE, max: lines }).catch(() => { })
+    await db.createCollection(logsCollectionName, { capped: true, size: maxLines * LINE_SIZE, max: maxLines }).catch(() => { })
     persistMethodFn = _persistMongodb.bind(null, collectionLogs)
     logsFn = _logsFromMongodb.bind(null, collectionLogs)
   } else {
-    const circularBuffer = CircularBuffer(lines)
+    const circularBuffer = CircularBuffer(maxLines)
     persistMethodFn = _persistMemory.bind(null, circularBuffer)
     logsFn = _logsFromMemory.bind(null, circularBuffer)
   }
-  
+
   ConsoleWebNode.logs = logsFn
+  if (express) {
+    express.get(logsPath, async (req, res) => res.send(await ConsoleWebNode.logs()))
+  }
 
   const StdoutWrite = global.process.stdout.write.bind(global.process.stdout)
   const StderrWrite = global.process.stderr.write.bind(global.process.stderr)
-  if (timestamp) {
+  if (consoleTimestamp) {
     global.process.stdout.write = function($str) {
       $str = _formatLogString(moment, $str)
       StdoutWrite($str)
       persistMethodFn($str)
     }
-    
+
     global.process.stderr.write = function($str) {
       $str = _formatLogErrString(moment, $str)
       StderrWrite($str)
@@ -41,7 +51,7 @@ export default async function ConsoleWebNode(moment, db, timestamp = true, logsC
       StdoutWrite($str)
       persistMethodFn(_formatLogString(moment, $str))
     }
-    
+
     global.process.stderr.write = function($str) {
       StderrWrite($str)
       persistMethodFn(_formatLogErrString(moment, $str))
