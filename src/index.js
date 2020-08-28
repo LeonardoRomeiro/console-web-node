@@ -34,47 +34,53 @@ export default async function ConsoleWebNode({
 
   const StdoutWrite = global.process.stdout.write.bind(global.process.stdout)
   const StderrWrite = global.process.stderr.write.bind(global.process.stderr)
-  if (consoleTimestamp) {
-    global.process.stdout.write = function($str) {
-      $str = _formatLogString(moment, $str)
-      StdoutWrite($str)
-      persistMethodFn($str)
-    }
 
-    global.process.stderr.write = function($str) {
-      $str = _formatLogErrString(moment, $str)
-      StderrWrite($str)
-      persistMethodFn($str)
-    }
-  } else {
-    global.process.stdout.write = function($str) {
-      StdoutWrite($str)
-      persistMethodFn(_formatLogString(moment, $str))
-    }
+  global.process.stdout.write = function($str) {
+    if (typeof $str !== 'string') return StdoutWrite($str)
 
-    global.process.stderr.write = function($str) {
-      StderrWrite($str)
-      persistMethodFn(_formatLogErrString(moment, $str))
+    const strTime = _setTimestamp(moment, $str)
+
+    if ($str[$str.length - 1] === '\n') {
+      const strFormat = _formatLogString(strTime)
+      consoleTimestamp ? StdoutWrite(strFormat) : StdoutWrite($str)
+      persistMethodFn(strFormat)
+    } else {
+      consoleTimestamp ? StdoutWrite(strTime) : StdoutWrite($str)
+    }
+  }
+
+  global.process.stderr.write = function($str) {
+    if (typeof $str !== 'string') return StderrWrite($str)
+
+    const strTime = _setTimestamp(moment, $str)
+
+    if ($str[$str.length - 1] === '\n') {
+      const strFormat = _formatLogErrString(strTime)
+      consoleTimestamp ? StderrWrite(strFormat) : StderrWrite($str)
+      persistMethodFn(strFormat)
+    } else {
+      consoleTimestamp ? StderrWrite(strTime) : StderrWrite($str)
     }
   }
 }
 
-function _formatLogString(moment, $str) {
-  if (typeof $str !== 'string') return $str
-  const timestamp = moment().format('DD MMM YYYY HH:mm:ss')
-  const str = `${timestamp}   ${$str.slice(0, -1).replace(/\n/g, '\n                       ') + '\n'}`
-  return str
+function _setTimestamp(moment, $str) {
+  return `${moment().format('DD MMM YYYY HH:mm:ss')}   ${$str}`
 }
 
-function _formatLogErrString(moment, $str) {
-  return `\x1b[31m${_formatLogString(moment, $str)}\x1b[0m`
+function _formatLogString($str) {
+  return `${$str.slice(0, -1).replace(/\n/g, '\n                       ') + '\n'}`
+}
+
+function _formatLogErrString($str) {
+  return `\x1b[31m${_formatLogString($str)}\x1b[0m`
 }
 
 function _persistMemory(circularBuffer, $str) {
   circularBuffer.push($str)
 }
 
-function _persistMongodb(collectionLogs, $str) {
+async function _persistMongodb(collectionLogs, $str) {
   collectionLogs.insertOne({ line: $str })
 }
 
