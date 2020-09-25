@@ -1,36 +1,18 @@
 import { CircularBuffer } from './utils/circular-buffer.js'
-import { consoleToHtml, consoleToHtmlLine } from './utils/console-to-html.js'
+import websocket from 'websocket'
+import fs from 'fs'
 
-const LINE_SIZE = 200
+export default function ConsoleWebNode({ moment = null, consoleTimestamp = true, maxLines = 10000, server = null }) {
+  const circularBuffer = CircularBuffer(maxLines)
 
-export default async function ConsoleWebNode({
-  express = null,
-  moment = null,
-  db = null,
-  consoleTimestamp = true,
-  logsCollectionName = 'logs',
-  logsPath = '/api/x/logs',
-  maxLines = 10000
-}) {
+  if (fs.existsSync('logs')) fs.readFileSync('logs', 'utf8').split('\n').forEach(line => circularBuffer.push(line + '\n'))
 
-  let persistMethodFn
-  let logsFn
+  const ws = new websocket.server({ httpServer: server })
 
-  if (db) {
-    const collectionLogs = db.collection(logsCollectionName)
-    await db.createCollection(logsCollectionName, { capped: true, size: maxLines * LINE_SIZE, max: maxLines }).catch(() => { })
-    persistMethodFn = _persistMongodb.bind(null, collectionLogs)
-    logsFn = _logsFromMongodb.bind(null, collectionLogs)
-  } else {
-    const circularBuffer = CircularBuffer(maxLines)
-    persistMethodFn = _persistMemory.bind(null, circularBuffer)
-    logsFn = _logsFromMemory.bind(null, circularBuffer)
-  }
-
-  ConsoleWebNode.logs = logsFn
-  if (express) {
-    express.get(logsPath, async (req, res) => res.send(await ConsoleWebNode.logs()))
-  }
+  ws.on('request', function(request) {
+    const connection = request.accept('log-me', request.origin)
+    circularBuffer.toArray().forEach((line) => connection.send(line))
+  })
 
   const StdoutWrite = global.process.stdout.write.bind(global.process.stdout)
   const StderrWrite = global.process.stderr.write.bind(global.process.stderr)
@@ -43,9 +25,12 @@ export default async function ConsoleWebNode({
     if ($str[$str.length - 1] === '\n') {
       const strFormat = _formatLogString(strTime)
       consoleTimestamp ? StdoutWrite(strFormat) : StdoutWrite($str)
-      persistMethodFn(strFormat)
+      ws.broadcast(strFormat)
+      circularBuffer.push(strFormat)
+      writeToFile()
     } else {
       consoleTimestamp ? StdoutWrite(strTime) : StdoutWrite($str)
+      ws.broadcast(strTime)
     }
   }
 
@@ -57,11 +42,20 @@ export default async function ConsoleWebNode({
     if ($str[$str.length - 1] === '\n') {
       const strFormat = _formatLogErrString(strTime)
       consoleTimestamp ? StderrWrite(strFormat) : StderrWrite($str)
-      persistMethodFn(strFormat)
+      ws.broadcast(strFormat)
+      circularBuffer.push(strFormat)
+      writeToFile()
     } else {
       consoleTimestamp ? StderrWrite(strTime) : StderrWrite($str)
+      ws.broadcast(strTime)
     }
   }
+
+  function writeToFile() {
+    clearTimeout(writeToFile._timeout)
+    writeToFile._timeout = setTimeout(() => fs.writeFileSync('logs', circularBuffer.toArray().join('')), 200)
+  }
+
 }
 
 function _setTimestamp(moment, $str) {
@@ -74,21 +68,4 @@ function _formatLogString($str) {
 
 function _formatLogErrString($str) {
   return `\x1b[31m${_formatLogString($str)}\x1b[0m`
-}
-
-function _persistMemory(circularBuffer, $str) {
-  circularBuffer.push($str)
-}
-
-async function _persistMongodb(collectionLogs, $str) {
-  collectionLogs.insertOne({ line: $str })
-}
-
-async function _logsFromMemory(circularBuffer) {
-  return consoleToHtml(circularBuffer.toArray().map((line) => consoleToHtmlLine(line)).join(''))
-}
-
-async function _logsFromMongodb(collectionLogs) {
-  const logsDocs = await collectionLogs.find().toArray()
-  return consoleToHtml(logsDocs.map(({ line }) => consoleToHtmlLine(line)).join(''))
 }
