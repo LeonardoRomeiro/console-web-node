@@ -1,16 +1,48 @@
 import { CircularBuffer } from './utils/circular-buffer.js'
+import moment from 'moment'
+import 'moment/locale/pt-br.js'
+import 'moment-timezone'
 import websocket from 'websocket'
-import fs from 'fs'
+import minio from 'minio'
+import crypto from 'crypto'
+moment.tz.setDefault('America/Sao_Paulo')
 
-export default function ConsoleWebNode({ moment = null, consoleTimestamp = true, maxLines = 10000, server = null }) {
+let writeToFile = () => {}
+
+export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines = 10000, server = null, name = 'logs' }) {
   const circularBuffer = CircularBuffer(maxLines)
+  
+  if (process.env.AMBIENTE && process.env.AMBIENTE !== 'fabrica') {
+    const LOGS_BUCKET = 'logs'
+    const minioClient = new minio.Client({
+      endPoint: process.env.MINIO_URL,
+      accessKey: process.env.MINIO_ACCESS_KEY,
+      secretKey: process.env.MINIO_SECRET_KEY,
+      useSSL: true
+    })
 
-  if (fs.existsSync('logs')) fs.readFileSync('logs', 'utf8').split('\n').forEach(line => circularBuffer.push(line + '\n'))
+    !await minioClient.bucketExists(LOGS_BUCKET) && await minioClient.makeBucket(LOGS_BUCKET)
+    
+    await minioClient.getObject(LOGS_BUCKET, name)
+    .then((stream) => new Promise((resolve) => {
+      const data = []
+      stream.on('data', data.push.bind(data))
+      stream.on('end', resolve.bind(null, data))
+    }))
+    .then((file) => Buffer.concat(file).toString().split('\n').forEach(line => circularBuffer.push(line + '\n')))
+    .catch(() => { })
 
+    writeToFile = () => {
+      clearTimeout(writeToFile._timeout)
+      writeToFile._timeout = setTimeout(() => minioClient.putObject(LOGS_BUCKET, name, circularBuffer.toArray().join('')), 200)
+    }
+  }
+    
   const ws = new websocket.server({ httpServer: server })
 
   ws.on('request', function(request) {
-    const connection = request.accept('log-me', request.origin)
+    if (crypto.createHash('sha1').update(request.origin).digest('base64') !== 'rJzrVISFf5EOCkdA3DkVpId9yZo=') return request.reject()
+    const connection = request.accept(null, request.origin)
     circularBuffer.toArray().forEach((line) => connection.send(line))
   })
 
@@ -20,7 +52,7 @@ export default function ConsoleWebNode({ moment = null, consoleTimestamp = true,
   global.process.stdout.write = function($str) {
     if (typeof $str !== 'string') return StdoutWrite($str)
 
-    const strTime = _setTimestamp(moment, $str)
+    const strTime = _setTimestamp($str)
 
     if ($str[$str.length - 1] === '\n') {
       const strFormat = _formatLogString(strTime)
@@ -50,15 +82,9 @@ export default function ConsoleWebNode({ moment = null, consoleTimestamp = true,
       ws.broadcast(strTime)
     }
   }
-
-  function writeToFile() {
-    clearTimeout(writeToFile._timeout)
-    writeToFile._timeout = setTimeout(() => fs.writeFileSync('logs', circularBuffer.toArray().join('')), 200)
-  }
-
 }
 
-function _setTimestamp(moment, $str) {
+function _setTimestamp($str) {
   return `${moment().format('DD MMM YYYY HH:mm:ss')}   ${$str}`
 }
 
