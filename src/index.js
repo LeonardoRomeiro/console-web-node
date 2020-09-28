@@ -1,17 +1,13 @@
 import { CircularBuffer } from './utils/circular-buffer.js'
-import moment from 'moment'
-import 'moment/locale/pt-br.js'
-import 'moment-timezone'
 import websocket from 'websocket'
 import minio from 'minio'
 import crypto from 'crypto'
-moment.tz.setDefault('America/Sao_Paulo')
 
 let writeToFile = () => {}
 
-export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines = 10000, server = null, name = 'logs' }) {
+export default async function ConsoleWebNode({ moment, consoleTimestamp = true, maxLines = 10000, server = null, name = 'logs' }) {
   const circularBuffer = CircularBuffer(maxLines)
-  
+
   if (process.env.AMBIENTE && process.env.AMBIENTE !== 'fabrica') {
     const LOGS_BUCKET = 'logs'
     const minioClient = new minio.Client({
@@ -22,7 +18,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
     })
 
     !await minioClient.bucketExists(LOGS_BUCKET) && await minioClient.makeBucket(LOGS_BUCKET)
-    
+
     await minioClient.getObject(LOGS_BUCKET, name)
     .then((stream) => new Promise((resolve) => {
       const data = []
@@ -37,7 +33,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
       writeToFile._timeout = setTimeout(() => minioClient.putObject(LOGS_BUCKET, name, circularBuffer.toArray().join('')), 200)
     }
   }
-    
+
   const ws = new websocket.server({ httpServer: server })
 
   ws.on('request', function(request) {
@@ -52,7 +48,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
   global.process.stdout.write = function($str) {
     if (typeof $str !== 'string') return StdoutWrite($str)
 
-    const strTime = _setTimestamp($str)
+    const strTime = _setTimestamp(moment, $str)
 
     if ($str[$str.length - 1] === '\n') {
       const strFormat = _formatLogString(strTime)
@@ -84,7 +80,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
   }
 }
 
-function _setTimestamp($str) {
+function _setTimestamp(moment, $str) {
   return `${moment().format('DD MMM YYYY HH:mm:ss')}   ${$str}`
 }
 

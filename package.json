@@ -1,6 +1,6 @@
 {
   "name": "console-web-node",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "",
   "main": "src/index.js",
   "type": "module",
@@ -26,8 +26,6 @@
   },
   "dependencies": {
     "minio": "^7.0.16",
-    "moment": "^2.29.0",
-    "moment-timezone": "^0.5.31",
     "websocket": "^1.0.32"
   }
 }
