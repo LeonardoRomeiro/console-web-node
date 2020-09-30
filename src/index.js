@@ -3,12 +3,6 @@ import minio from 'minio'
 import crypto from 'crypto'
 import eventEmitter from 'events'
 
-const minioClient = new minio.Client({
-  endPoint: process.env.MINIO_URL,
-  accessKey: process.env.MINIO_ACCESS_KEY,
-  secretKey: process.env.MINIO_SECRET_KEY,
-  useSSL: true
-})
 const LOGS_BUCKET = 'logs'
 const READ_TIMEOUT = 30000
 const LISTNER_TIMEOUT = 60000
@@ -16,18 +10,34 @@ const BROADCAST_TOKEN = 'broadcast'
 const events = new eventEmitter()
 
 export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines = 10000, express = null, name = 'logs', moment, logsPath = '/api/x/logs' }) {
-  const circularBuffer = CircularBuffer(maxLines)
+	const circularBuffer = CircularBuffer(maxLines)
 
-  !await minioClient.bucketExists(LOGS_BUCKET) && await minioClient.makeBucket(LOGS_BUCKET)
+	let writeToFile = () => {}
 
-  await minioClient.getObject(LOGS_BUCKET, name)
+	if (process.env.MINIO_URL) {
+		const minioClient = new minio.Client({
+			endPoint: process.env.MINIO_URL,
+			accessKey: process.env.MINIO_ACCESS_KEY,
+			secretKey: process.env.MINIO_SECRET_KEY,
+			useSSL: true
+		})
+
+		!await minioClient.bucketExists(LOGS_BUCKET) && await minioClient.makeBucket(LOGS_BUCKET)
+
+		await minioClient.getObject(LOGS_BUCKET, name)
     .then((stream) => new Promise((resolve) => {
-        const data = []
-        stream.on('data', data.push.bind(data))
-        stream.on('end', resolve.bind(null, data))
-      }))
+			const data = []
+			stream.on('data', data.push.bind(data))
+			stream.on('end', resolve.bind(null, data))
+		}))
     .then((file) => Buffer.concat(file).toString().split('\n').forEach(line => circularBuffer.push(line + '\n')))
-    .catch(() => { })
+		.catch(() => { })
+		
+		writeToFile = () => {
+			writeToFile._timeout && clearTimeout(writeToFile._timeout)
+			writeToFile._timeout = setTimeout(() => minioClient.putObject(LOGS_BUCKET, name, circularBuffer.toArray().join('')), 200)
+		}
+	}
 
   express.get(logsPath, async (req, res) => {
     if (!hasListner(req.query.u)) {
@@ -80,12 +90,6 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
       broadcast(strTime)
     }
   }
-
-  function writeToFile() {
-    writeToFile._timeout && clearTimeout(writeToFile._timeout)
-    writeToFile._timeout = setTimeout(() => minioClient.putObject(LOGS_BUCKET, name, circularBuffer.toArray().join('')), 200)
-  }
-
 }
 
 const listners = {}
