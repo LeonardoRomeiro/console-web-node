@@ -10,13 +10,12 @@ const minioClient = new minio.Client({
   useSSL: true
 })
 const LOGS_BUCKET = 'logs'
-const LOGS_PATH = '/api/x/logs'
 const READ_TIMEOUT = 30000
 const LISTNER_TIMEOUT = 60000
 const BROADCAST_TOKEN = 'broadcast'
 const events = new eventEmitter()
 
-export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines = 10000, express = null, name = 'logs', moment }) {
+export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines = 10000, express = null, name = 'logs', moment, logsPath = '/api/x/logs' }) {
   const circularBuffer = CircularBuffer(maxLines)
 
   !await minioClient.bucketExists(LOGS_BUCKET) && await minioClient.makeBucket(LOGS_BUCKET)
@@ -30,7 +29,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
     .then((file) => Buffer.concat(file).toString().split('\n').forEach(line => circularBuffer.push(line + '\n')))
     .catch(() => { })
 
-  express.get(LOGS_PATH, async (req, res) => {
+  express.get(logsPath, async (req, res) => {
     if (!hasListner(req.query.u)) {
       if (!checkPass(req.query.p)) res.end()
       setListner(req.query.u)
@@ -40,7 +39,7 @@ export default async function ConsoleWebNode({ consoleTimestamp = true, maxLines
     const ls = await readListner(req.query.u)
     res.send(ls.join(''))
   })
-  express.post(LOGS_PATH, async (req, res) => {
+  express.post(logsPath, async (req, res) => {
     if (hasListner(req.query.u)) clearLastLogs(req.query.u)
     res.end()
   })
