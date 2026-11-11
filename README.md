@@ -11,7 +11,7 @@ import moment from 'moment'
 consoleWebNode({ express: app, moment })
 
 // NestJS: o logger já coloca data e hora
-consoleWebNode({ express: app.getHttpAdapter().getInstance(), maxLines: 100000 })
+consoleWebNode({ express: app.getHttpAdapter().getInstance(), consoleTimestamp: false })
 ```
 
 | opção | padrão | |
