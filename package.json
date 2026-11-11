@@ -1,9 +1,19 @@
 {
   "name": "console-web-node",
-  "version": "0.0.12",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Guarda em memória as últimas linhas do console de um servidor Node/Express e permite acompanhá-las de outra máquina (npx console-web-node <servidor>)",
   "main": "src/index.js",
   "type": "module",
+  "bin": {
+    "console-web-node": "src/client.js"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.js"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
   "scripts": {
     "start": "nodemon",
     "test:watch": "nodemon -x mocha -p 'src/**/*.test.js'",
@@ -21,10 +31,7 @@
   "homepage": "https://github.com/LeonardoRomeiro/console-web-node#readme",
   "devDependencies": {
     "chai": "^4.2.0",
-    "mocha": "^8.1.1",
-    "nodemon": "^2.0.4"
-  },
-  "dependencies": {
-    "minio": "^7.0.16"
+    "mocha": "^10.8.2",
+    "nodemon": "^3.1.14"
   }
 }
